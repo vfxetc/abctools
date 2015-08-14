@@ -1,0 +1,4 @@
+maya_camera2abc:
+    entrypoint: abctools.commands.maya_camera2abc:cli
+    interpreter: maya2014_python
+

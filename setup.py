@@ -7,6 +7,8 @@ setup(
     description='Collection of general tools and utilities for working in and with Alembic Files',
     url='http://github.com/westernx/abctools',
 
+    metatools_entrypoints = 'entrypoints.yml',
+
     packages=find_packages(exclude=['build*', 'tests*']),
     include_package_data=True,
 
