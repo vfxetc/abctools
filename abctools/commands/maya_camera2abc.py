@@ -40,7 +40,11 @@ def cli():
     if not cmds.pluginInfo('AbcExport', query = True, loaded = True):
         cmds.loadPlugin('AbcExport')
 
-    nodes = cmds.file(source, i = True, returnNewNodes = True)
+    nodes = cmds.file(source, i = True, returnNewNodes = True) or []
+
+    # remove underworld nodes
+    nodes = [n for n in nodes if not n.count("->")]
+
     cameras = cmds.ls(nodes, type = "camera", l = True)
     if not cameras:
         parser.error("maya scene file has no cameras")
