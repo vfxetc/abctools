@@ -3,6 +3,7 @@ import os
 import subprocess
 import tempfile
 import shutil
+import yaml
 
 from abctools import nuke_tracker
 
@@ -16,28 +17,27 @@ def convert_camera(path, temp_dir):
     return dest
 
 def cli():
-    usage = "usage: %prog [options] SOURCE_ABC_FILE [DEST_NUKE_FILE]"
+    usage = "usage: %prog [options] SOURCE_ABC_FILE TRACKING_SET.yml  [DEST_NUKE_FILE]"
     parser = OptionParser(usage)
     parser.add_option("-c", '--camera', default = None, help = "camera file [.abc/.mb/.ma]")
-    parser.add_option("-y", '--yml', default = None, help = "tracking set [.yml]")
 
     (options, args) = parser.parse_args()
 
-    if not args:
+    if len(args) < 2:
         parser.error("Not enough arguments")
 
-    if not options.yml:
-        parser.error("no tracking set specified")
-
     source = args[0]
+    tracking_sets = yaml.load(file(args[1], 'r'))
 
-    if len(args) > 1:
-        dest = args[1]
+    if len(args) > 2:
+        dest = args[2]
     else:
         name, ext = os.path.splitext(source)
         dest = name + ".nk"
 
     camera_file = source
+
+
 
     temp_dir = tempfile.mkdtemp()
     try:
@@ -49,6 +49,7 @@ def cli():
 
             nuke_tracker.nuke_tracker(abc_file = source,
                                                             abc_camera_file = camera_file,
+                                                            tracking_sets = tracking_sets,
                                                             dest_nuke_file = dest)
 
     finally:

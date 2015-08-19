@@ -118,10 +118,33 @@ def perspective(fovy, aspect, znear, zfar):
     w = h * aspect
     return frustum(-w, w, -h, h, znear, zfar)
 
-def nuke_tracker(abc_file, abc_camera_file, dest_nuke_file):
-    print abc_file
-    print abc_camera_file
-    print dest_nuke_file
+def find_objects(mesh_list, object_dict):
+
+    mesh_maping = {}
+    for object_name in object_dict:
+        names = object_dict[object_name].get('alternative_names', [])
+        names.append(object_name)
+        mesh = None
+
+        for m in mesh_list:
+            nice_name = m.getName().split(":")[-1]
+
+            if nice_name in names:
+                mesh = m
+                break
+
+        if mesh is None:
+            raise Exception("Unable to find %s in abc cache" % object_name)
+
+        mesh_maping[object_name] = mesh
+
+    return mesh_maping
+
+def nuke_tracker(abc_file, abc_camera_file, tracking_sets, dest_nuke_file):
+#     print abc_file
+#     print abc_camera_file
+#     print dest_nuke_file
+#     print tracking_sets
 
     archive = alembic.Abc.IArchive(abc_file)
     camera_archive = alembic.Abc.IArchive(abc_camera_file)
@@ -138,6 +161,9 @@ def nuke_tracker(abc_file, abc_camera_file, dest_nuke_file):
         raise RuntimeError("unable to find polymeshs  in %s" % abc_file)
 
     fps = 24.0
+    width = 1920.0
+    height = 1080.0
+
     start, end = get_frame_range(archive)
     cam_start, cam_end = get_frame_range(camera_archive)
 
@@ -147,61 +173,160 @@ def nuke_tracker(abc_file, abc_camera_file, dest_nuke_file):
     start_frame = int(start * fps)
     end_frame = int(end * fps)
     # print alembic.Abc.GetArchiveInfo(archive)
-    mesh = meshs[0]
-    camera = cameras[0]
-    schema = mesh.getSchema()
-    cam_schema = camera.getSchema()
+
+    object_map = find_objects(meshs, tracking_sets['objects'])
+
+    data = {}
+
+    # Setup Trackers
+    for i, camera in enumerate(cameras):
+        for tracker_data in tracking_sets['tracks']:
+            # print camera.getName(), tracker['tracker_name']
+            cam = camera.getName()
+            tracker_name = tracker_data['tracker_name']
+            if not cam in data:
+                data[cam] = []
+            if not tracker_name in [t.name for t in  data[cam]]:
+                if i > 0:
+                    tracker_name = "%s_%02d" % (tracker_name, i)
+
+                tracker = NukeTracker(tracker_name,
+                                                         tracker_data['tracking_points'],
+                                                         width,
+                                                         height,
+                                                         start)
+                data[cam].append(tracker)
 
 
-    x_points = []
-    y_points = []
-    for i in xrange(start_frame, end_frame):
-        t = i * 1 / float(fps)
-        cam_samp = cam_schema.getValue(t)
-        mesh_samp = schema.getValue(t)
+    for frame in xrange(start_frame, end_frame):
+        secs = frame * 1 / float(fps)
+        for camera in cameras:
+            cam = camera.getName()
+            cam_schema = camera.getSchema()
+            cam_samp = cam_schema.getValue(secs)
+            focal_length = cam_samp.getFocalLength()
+            near = cam_samp.getNearClippingPlane()
+            far = cam_samp.getFarClippingPlane()
+            vertical_aperture = cam_samp.getVerticalAperture()
+            fovy = 2.0 * math.degrees(math.atan(vertical_aperture * 10.0 /
+                                                                        (2.0 * focal_length)))
 
-        positions = mesh_samp.getPositions()
+            persp_matrix = perspective(fovy, width / height, near, far)
+            view_matrix = inv(get_final_matrix(camera))
 
-        pos  = positions[6108]
+            for tracker in data[cam]:
+                tracker.eval(persp_matrix, view_matrix , object_map, secs)
 
-        focal_length = cam_samp.getFocalLength()
-        vertical_aperture = cam_samp.getVerticalAperture()
-        horizontal_aperture = cam_samp.getHorizontalAperture()
-        near = cam_samp.getNearClippingPlane()
-        far = cam_samp.getFarClippingPlane()
-        fovy = 2.0 * math.degrees(math.atan(vertical_aperture * 10.0 /
-                                                                                (2.0 * focal_length)))
-
-#         print "focal", focal_length
-#         print "horizontal_aperture", horizontal_aperture * 10
-#         print "vertical_aperture", vertical_aperture * 10
-#         print "fovy", fovy, focal_length / horizontal_aperture
-#         print "near, far", near, far
-
-        width = 1920.0
-        height = 1080.0
-
-        point = [ [pos.x ], [pos.y ], [pos.z  ], [1.0] ]
-
-        persp_matrix = perspective(fovy, width / height, near, far)
-        view_matrix = inv(get_final_matrix(camera))
-        model_matrix = get_final_matrix(mesh)
-
-        # transform the point
-        v = persp_matrix.T * view_matrix * model_matrix * point
-
-        x = v[0, 0]
-        y = v[1, 0]
-        z = v[2, 0]
-        w = v[3, 0]
-
-        x = (((x / w) + 1) / 2.0) * width
-        y = (((y / w) + 1) / 2.0) * height
-
-        x_points.append(x)
-        y_points.append(y)
+    with open(dest_nuke_file, 'w') as f:
+        for camera in data:
+            for tracker in data[camera]:
+                tracker.export_nuke(f)
 
 
-    print "{curve x%d" % start_frame, " ".join([str(item) for item in x_points]), "}",
-    print "{curve x%d" % start_frame, " ".join([str(item) for item in y_points]), "}"
+    return
+
+
+class Track(object):
+    def __init__(self, start):
+        self.x = []
+        self.y = []
+        self.start = start
+
+    def curves(self):
+        x = "{curve x%d " % self.start + " ".join([str(item) for item in self.x]) + "}"
+        y = "{curve x%d " % self.start + " ".join([str(item) for item in self.y]) + "}"
+        return x, y
+
+
+class NukeTracker(object):
+
+    def __init__(self, name, tracking_points, width, height, start):
+        self.tracks = []
+        self.name = name
+        self.tracking_points = tracking_points
+        self.width = width
+        self.height = height
+        self.start = start
+
+        for item in tracking_points:
+            self.tracks.append(Track(start))
+
+    def eval(self, persp_matrix, view_matrix , object_map, secs):
+        for i, (object_name, point_index) in enumerate(self.tracking_points):
+            mesh = object_map[object_name]
+            schema = mesh.getSchema()
+            mesh_samp = schema.getValue(secs)
+            model_matrix = get_final_matrix(mesh)
+
+            positions = mesh_samp.getPositions()
+            pos = positions[point_index]
+
+            point = [ [pos.x ], [pos.y ], [pos.z  ], [1.0] ]
+
+            v = persp_matrix.T * view_matrix * model_matrix * point
+
+            x = v[0, 0]
+            y = v[1, 0]
+            z = v[2, 0]
+            w = v[3, 0]
+
+            x = (((x / w) + 1) / 2.0) * self.width
+            y = (((y / w) + 1) / 2.0) * self.height
+
+            self.tracks[i].x.append(x)
+            self.tracks[i].y.append(y)
+
+    def export_nuke(self, f):
+        l = []
+        f.write("Tracker4 {\n")
+        f.write("tracks { { 1 31 %d }\n" % len(self.tracks))
+        f.write("{ { 5 1 20 enable e 1 }\n")
+        f.write("{ 3 1 75 name name 1 }\n")
+        f.write("{ 2 1 58 track_x track_x 1 }\n")
+        f.write("{ 2 1 58 track_y track_y 1 }\n")
+        f.write("{ 2 1 63 offset_x offset_x 1 }\n")
+        f.write("{ 2 1 63 offset_y offset_y 1 }\n")
+        f.write("{ 4 1 27 T T 1 }\n")
+        f.write("{ 4 1 27 R R 1 }\n")
+        f.write("{ 4 1 27 S S 1 }\n")
+        f.write("{ 2 0 45 error error 1 }\n")
+        f.write("{ 1 1 0 error_min error_min 1 }\n")
+        f.write("{ 1 1 0 error_max error_max 1 } \n")
+        f.write("{ 1 1 0 pattern_x pattern_x 1 }\n")
+        f.write("{ 1 1 0 pattern_y pattern_y 1 }\n")
+        f.write("{ 1 1 0 pattern_r pattern_r 1 }\n")
+        f.write("{ 1 1 0 pattern_t pattern_t 1 }\n")
+        f.write("{ 1 1 0 search_x search_x 1 }\n")
+        f.write("{ 1 1 0 search_y search_y 1 }\n")
+        f.write("{ 1 1 0 search_r search_r 1 }\n")
+        f.write("{ 1 1 0 search_t search_t 1 }\n")
+        f.write("{ 2 1 0 key_track key_track 1 }\n")
+        f.write("{ 2 1 0 key_search_x key_search_x 1 }\n")
+        f.write("{ 2 1 0 key_search_y key_search_y 1 }\n")
+        f.write("{ 2 1 0 key_search_r key_search_r 1 }\n")
+        f.write("{ 2 1 0 key_search_t key_search_t 1 }\n")
+        f.write("{ 2 1 0 key_track_x key_track_x 1 }\n")
+        f.write("{ 2 1 0 key_track_y key_track_y 1 }\n")
+        f.write("{ 2 1 0 key_track_r key_track_r 1 }\n")
+        f.write("{ 2 1 0 key_track_t key_track_t 1 }\n")
+        f.write("{ 2 1 0 key_centre_offset_x key_centre_offset_x 1 }\n")
+        f.write("{ 2 1 0 key_centre_offset_y key_centre_offset_y 1 }\n")
+        f.write("}\n")
+
+
+        track_tail = "{} {} 1 0 0 {} 1 0 -30 -30 30 30 -21 -21 21 21 {} {}  {}  {}  {}  {}  {}  {}  {}  {}  {}"
+
+        f.write("{\n")
+        for i, track in enumerate(self.tracks):
+            track_name = "track %d" % (i + 1,)
+            x_curve, y_curve = track.curves()
+            track_string = '{ 1 "%s"  %s %s  %s }\n' % (track_name, x_curve, y_curve, track_tail)
+            f.write(track_string)
+
+        f.write("}\n")
+        f.write("}\n") # tracks
+
+        f.write("name %s\n" % self.name)
+        f.write("}\n")
+        f.write("\n")
 

@@ -2,3 +2,5 @@ maya_camera2abc:
     entrypoint: abctools.commands.maya_camera2abc:cli
     interpreter: maya2014_python
 
+abc_nuke_tracker: abctools.commands.abc_nuke_tracker:cli
+

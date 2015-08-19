@@ -19,9 +19,10 @@ def export_tracking_sets(sets, dest_yml):
             point_index = item.split('.')[-1].split('[')[-1].rstrip(']')
 
             tracking_points.append((object_name, int(point_index)))
+            altnames = cmds.listRelatives(object_name, shapes = True) or []
 
             if object_name not in objects:
-                objects[object_name] = {'alternative_names': []}
+                objects[object_name] = {'alternative_names': altnames}
 
         if tracking_points:
             tracks.append({'tracker_name': clean_name, 'tracking_points':tracking_points})
