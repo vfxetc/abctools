@@ -19,12 +19,15 @@ def cli():
     usage = "usage: %prog [options] SOURCE_ABC_FILE [DEST_NUKE_FILE]"
     parser = OptionParser(usage)
     parser.add_option("-c", '--camera', default = None, help = "camera file [.abc/.mb/.ma]")
+    parser.add_option("-y", '--yml', default = None, help = "tracking set [.yml]")
 
     (options, args) = parser.parse_args()
 
     if not args:
         parser.error("Not enough arguments")
 
+    if not options.yml:
+        parser.error("no tracking set specified")
 
     source = args[0]
 

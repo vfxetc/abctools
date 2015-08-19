@@ -192,6 +192,7 @@ def nuke_tracker(abc_file, abc_camera_file, dest_nuke_file):
 
         x = v[0, 0]
         y = v[1, 0]
+        z = v[2, 0]
         w = v[3, 0]
 
         x = (((x / w) + 1) / 2.0) * width
