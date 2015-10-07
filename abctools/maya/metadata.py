@@ -17,7 +17,7 @@ def create_metadata_transform(metadata, prefix='__ksmeta__'):
         for key, value in metadata.iteritems():
             attr = '%s_json_%s' % (prop_prefix, key)
             cmds.addAttr(transform, longName=attr, dataType='string')
-            cmds.setAttr('%s.%s' % (transform, attr), json.dumps(value, default=_json_default), type='string')
+            cmds.setAttr('%s.%s' % (transform, attr), json.dumps(value, default=_json_default, separators=(',', ':')), type='string')
 
     except:
         # Clean up if we didn't manage to create everything.
