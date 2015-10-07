@@ -1,18 +1,29 @@
 from maya import cmds
 
 from .metadata import create_metadata_transform
-
+from .plugin import load_export_plugin
 
 def export(file, metadata=None, metadata_prefix='__ksmeta__', **kwargs):
 
     job = ['-file', file]
 
     for key, value in kwargs.iteritems():
+
         if value is True:
             job.append('-%s' % key)
+        elif value is False:
+            continue
+
         elif isinstance(value, (tuple, list)):
-            for v in value:
-                job.extend(('-' + key, v))
+
+            # This takes multiple arguments.
+            if key == 'frameRange':
+                job.append('-' + key)
+                job.extend(value)
+
+            else:
+                for v in value:
+                    job.extend(('-' + key, v))
         else:
             job.extend(('-' + key, value))
 
@@ -28,7 +39,8 @@ def export(file, metadata=None, metadata_prefix='__ksmeta__', **kwargs):
         job.extend(('-userAttrPrefix', 'ksmeta_'))
 
     try:
-        cmds.AbcExport(j=' '.join(job))
+        load_export_plugin()
+        cmds.AbcExport(j=' '.join(str(x) for x in job))
 
     finally:
         if metadata:
