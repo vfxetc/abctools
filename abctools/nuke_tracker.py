@@ -1,6 +1,6 @@
 import imath
 import alembic
-from alembic import AbcGeom
+from alembic import AbcGeom, Abc
 
 import math
 import numpy as np
@@ -170,8 +170,8 @@ def nuke_tracker(abc_file, abc_camera_file, tracking_sets, dest_nuke_file):
     start = min(start, cam_start)
     end = max(end, cam_end)
 
-    start_frame = int(start * fps)
-    end_frame = int(end * fps)
+    start_frame = int(start * fps + 0.5)
+    end_frame = int(end * fps + 0.5)
     # print alembic.Abc.GetArchiveInfo(archive)
 
     object_map = find_objects(meshs, tracking_sets['objects'])
@@ -194,9 +194,8 @@ def nuke_tracker(abc_file, abc_camera_file, tracking_sets, dest_nuke_file):
                                                          tracker_data['tracking_points'],
                                                          width,
                                                          height,
-                                                         start)
+                                                         start_frame)
                 data[cam].append(tracker)
-
 
     for frame in xrange(start_frame, end_frame):
         secs = frame * 1 / float(fps)
@@ -230,11 +229,16 @@ class Track(object):
     def __init__(self, start):
         self.x = []
         self.y = []
-        self.start = start
+        self.start_frame = start
 
     def curves(self):
-        x = "{curve x%d " % self.start + " ".join([str(item) for item in self.x]) + "}"
-        y = "{curve x%d " % self.start + " ".join([str(item) for item in self.y]) + "}"
+
+        x = "{curve x%d " % self.start_frame
+        y = "{curve x%d " % self.start_frame
+
+        x += " ".join([str(item) for item in self.x]) + "}"
+        y += " ".join([str(item) for item in self.y]) + "}"
+
         return x, y
 
 
@@ -255,7 +259,8 @@ class NukeTracker(object):
         for i, (object_name, point_index) in enumerate(self.tracking_points):
             mesh = object_map[object_name]
             schema = mesh.getSchema()
-            mesh_samp = schema.getValue(secs)
+            sel = Abc.ISampleSelector(secs)
+            mesh_samp = schema.getValue(sel)
             model_matrix = get_final_matrix(mesh)
 
             positions = mesh_samp.getPositions()
