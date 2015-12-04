@@ -197,7 +197,7 @@ def nuke_tracker(abc_file, abc_camera_file, tracking_sets, dest_nuke_file):
                                                          start_frame)
                 data[cam].append(tracker)
 
-    for frame in xrange(start_frame, end_frame):
+    for frame in xrange(start_frame, end_frame + 1):
         secs = frame * 1 / float(fps)
         for camera in cameras:
             cam = camera.getName()
