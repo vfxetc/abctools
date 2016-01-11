@@ -69,20 +69,21 @@ def get_frame_range(archive):
     else:
         return None, None
 
-def accumulate_xform(xf, obj):
+def accumulate_xform(xf, obj, seconds):
     if AbcGeom.IXform.matches(obj.getHeader()):
         x = AbcGeom.IXform(obj, KWrapExisting)
-        samp = x.getSchema().getValue()
+        sel = Abc.ISampleSelector(seconds)
+        samp = x.getSchema().getValue(sel)
         xf *= samp.getMatrix()
 
-def get_final_matrix(obj):
+def get_final_matrix(obj, secs = 0):
 
     parent = obj.getParent()
     xf = imath.M44d()
     xf.makeIdentity()
 
     while parent:
-        accumulate_xform(xf, parent)
+        accumulate_xform(xf, parent, secs)
         parent = parent.getParent()
 
     xf_m = np.zeros((4, 4), dtype = np.float32)
@@ -211,7 +212,7 @@ def nuke_tracker(abc_file, abc_camera_file, tracking_sets, dest_nuke_file):
                                                                         (2.0 * focal_length)))
 
             persp_matrix = perspective(fovy, width / height, near, far)
-            view_matrix = inv(get_final_matrix(camera))
+            view_matrix = inv(get_final_matrix(camera, secs))
 
             for tracker in data[cam]:
                 tracker.eval(persp_matrix, view_matrix , object_map, secs)
@@ -261,7 +262,7 @@ class NukeTracker(object):
             schema = mesh.getSchema()
             sel = Abc.ISampleSelector(secs)
             mesh_samp = schema.getValue(sel)
-            model_matrix = get_final_matrix(mesh)
+            model_matrix = get_final_matrix(mesh, secs)
 
             positions = mesh_samp.getPositions()
             pos = positions[point_index]
