@@ -35,7 +35,6 @@ def read_tracking_set_meta(path, prefix = "__tracker__"):
 
         for attr in value['attributes']:
             object_name = attr.split(':')[-1].split('.')[0]
-
             if not object_name in data['objects']:
                 data['objects'][object_name] = {'alternative_names': [object_name, object_name + "Shape"]}
 
@@ -75,6 +74,9 @@ def cli():
         tracking_sets = yaml.load(file(options.tracking_set, 'r'))
     else:
         tracking_sets = read_tracking_set_meta(source)
+
+    if not tracking_sets['tracks']:
+        parser.error("Cannot find tracking sets")
 
     # pprint.pprint(tracking_sets)
 
